@@ -6,7 +6,7 @@ void newtonClassic(
         vector<double> &),
     unsigned int dimension,
     vector<double> & x,
-    vector<double> residuals, int iteration) 
+    vector<double> residuals, int iteration)
 {
 
   //  std::cout << "NEWTON_START\n";

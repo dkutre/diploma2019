@@ -34,8 +34,9 @@ double Hpontr = 0;
 double Fper = 0;
 double tabs = 0;
 
-Matrix RESULT(1000, vector<double>(12, 0));
-Matrix OPTIMAL(1000, vector<double>(12, 0));
+Matrix RESULT(rungeKuttaSteps, vector<double>(12, 0));
+Matrix OPTIMAL(rungeKuttaSteps, vector<double>(12, 0));
+Matrix INTERMEDIATE_RESULT(rungeKuttaSteps + 1, vector<double>(7, 0));
 
 void FUN2 (int dimension, double x0, vector<double> y, vector<double>& dy, int& exit_signal, unsigned int step_number)
 {
@@ -225,7 +226,7 @@ void massAnalyz()
 void FUN2_2 (int dimension, double x0, vector<double> y, vector<double>& dy, int& exit_signal, unsigned int step_number)
 {
     hkm = y[0] / 1000;
-    ro = 1.22235514 - 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm;
+    ro = 1.22235514 - 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000504 * hkm * hkm * hkm;
     Xaer = 0.8 * ro * y[1] * y[1] * S / 2.0;
 
     double a = -0.8 * ro * S / 1.0 / y[2];
@@ -237,22 +238,21 @@ void FUN2_2 (int dimension, double x0, vector<double> y, vector<double>& dy, int
 
     double P12 = 1.0 / b;
     double P22 = 2.0 * c / b / b + sqrt((4.0 * c * c + b * b - 2.0 * P12 * b * b) / b / b / b / b);
-    double dx1 = y[0] - OPTIMAL[step_number][1];
-    double dx2 = y[1] - OPTIMAL[step_number][2];
+    double dx1 = INTERMEDIATE_RESULT[step_number][1] - OPTIMAL[step_number][1];
+    double dx2 = INTERMEDIATE_RESULT[step_number][2] - OPTIMAL[step_number][2];
     double dU = -b * (P12 * dx1 + P22 * dx2);
+    U = OPTIMAL[step_number + 1][9] + dU; // т.к методе Ньютора когда достигаем момента переключения делаем шаг назад и заново просчитываем шаг уже с учетом U_switch
+    U = std::max(0.0, std::min(U, 305.0));
 
-    RESULT[rkStepsFirst + step_number][dimension + 4] = dU * T;// ! запись дополнительных переменных
-    RESULT[rkStepsFirst + step_number][dimension + 5] = dx1;// ! запись дополнительных переменых
-    RESULT[rkStepsFirst + step_number][dimension + 6] = dx2;// ! запись дополнительных переменых
-    RESULT[rkStepsFirst + step_number][dimension + 7] = y[3];// ! запись дополнительных переменных
+    RESULT[step_number][dimension + 4] = dU;// ! запись дополнительных переменных
+    RESULT[step_number][dimension + 5] = dx1;// ! запись дополнительных переменых
+    RESULT[step_number][dimension + 6] = dx2;// ! запись дополнительных переменых
+    RESULT[step_number][dimension + 7] = U;//y[3];// ! запись дополнительных переменных
     //std::cout <<step_number << " " << -b << " " << " " << P12 << " " << P22 << " " << dx1 << " " << dx2 <<  " " << dU * T << std::endl;
 
-    dy[3] = dU * T;
-    if (dU * T > 0)
-        y[3] = std::min(y[3] + dy[3], u_max);
     dy[0] = -y[1] * T;
-    dy[1] = (-(beta * y[3] + Xaer) / y[2] + g) * T;
-    dy[2] = - y[3] * T;
+    dy[1] = (-(beta * U + Xaer) / y[2] + g) * T;
+    dy[2] = - U * T;
 
     if (fabs(1.0 / rungeKuttaSteps * (step_number + rkStepsFirst) - x0) < 1e-10) {
         tabs = x0 * T;
@@ -267,18 +267,18 @@ void FUN2_2 (int dimension, double x0, vector<double> y, vector<double>& dy, int
 
 void execRK (const vector<double> & x)
 {
+    std::cout << "execRK()" << std::endl;
     resetGlobalVariables();
 
-    int dimension = 4;
+    int dimension = 3;
     rkStepsFirst  = 0; // N2
     rkStepsSecond = 0; // N3
 
-    vector<double> y(4, 0);
-    Matrix result(rungeKuttaSteps + 1, vector<double>(7, 0));
+    vector<double> y(3, 0);
     int exit_signal;
 
     hkm = H / 1000;
-    ro = 1.22235514- 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm;
+    ro = 1.32235514- 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm;
     Xaer = 0.8 * ro * V * V * S / 2.0;
     U = 0;
 
@@ -296,28 +296,33 @@ void execRK (const vector<double> & x)
     y[2] = am;
 
     int temp_step = 0;
-    RK4(FUN2_2, dimension, rungeKuttaSteps, x0, dx, y, exit_signal, temp_step, result);
+    std::cout << "RK4()" << std::endl;
+    RK4(FUN2_2, dimension, rungeKuttaSteps, x0, dx, y, exit_signal, temp_step, INTERMEDIATE_RESULT);
+    std::cout << "/RK4()" << std::endl;
     rkStepsFirst = temp_step;
 
     for (int i = 0; i < rkStepsFirst + 1; i++) {
         for (int j = 0; j < dimension + 1; j++) {
-            RESULT[i][j] = result[i][j];
+            RESULT[i][j] = INTERMEDIATE_RESULT[i][j];
         }
     }
+    std::cout << "/execRK()" << std::endl;
 }
 
 void synthesis()
 {
-    std::cout << "synthesis()";
+    std::cout << "synthesis()" << std::endl;
     int newton_steps = 0;
     vector<double> residuals(3, 1);
     vector<double> args = {P1, P3, T};
+    std::cout << "newtonClassic()" << std::endl;
     newtonClassic(&getResidual, 3, args, residuals, newton_steps);
+    std::cout << "/newtonClassic()" << std::endl;
     OPTIMAL = RESULT;
     execRK(args);
     printMatrix(RESULT);
     //printMatrix(OPTIMAL);
-
+    std::cout << "/synthesis()" << std::endl;
 }
 
 int main()
