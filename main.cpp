@@ -42,6 +42,15 @@ Matrix RESULT(rungeKuttaSteps, vector<double>(12, 0));
 Matrix OPTIMAL(rungeKuttaSteps, vector<double>(12, 0));
 Matrix INTERMEDIATE_RESULT(rungeKuttaSteps + 1, vector<double>(7, 0));
 
+double get_ro(double h_km)
+{
+    static std::random_device rd{};
+    static std::mt19937 gen{rd()};
+    static std::normal_distribution<> du{1, 0.01};
+    double random = du(gen);
+    return random * (1.22235514 - 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm);
+}
+
 void FUN2 (int dimension, double x0, vector<double> y, vector<double>& dy, int& exit_signal, unsigned int step_number)
 {
     if (rkStepsFirst == 0) {
@@ -229,7 +238,7 @@ std::size_t findSwitchIndex(const Matrix & matrix)
 void free_fall (int dimension, double x0, vector<double> y, vector<double>& dy, int& exit_signal, unsigned int step_number)
 {
     hkm = y[0] / 1000;
-    ro = 1.22235514 - 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm;
+    ro = get_ro(hkm);
     Xaer = cx * ro * y[1] * y[1] * S / 2.0;
     /*
     double a = -0.8 * ro * S / 1.0 / y[2];
@@ -299,7 +308,7 @@ double getVByH(const Matrix& stats, double H)
 void engine_on (int dimension, double x0, vector<double> y, vector<double>& dy, int& exit_signal, unsigned int step_number)
 {
     hkm = y[0] / 1000;
-    ro = 1.22235514 - 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm;
+    ro = get_ro(hkm);
     Xaer = cx * ro * y[1] * y[1] * S / 2.0;
     /*
     double a = -0.8 * ro * S / 1.0 / y[2];
@@ -353,7 +362,7 @@ void engine_on (int dimension, double x0, vector<double> y, vector<double>& dy, 
 void end_free_fall (int dimension, double x0, vector<double> y, vector<double>& dy, int& exit_signal, unsigned int step_number)
 {
     hkm = y[0] / 1000;
-    ro = 1.22235514 - 0.11422776 * hkm + 0.00368329 * hkm * hkm - 0.0000404 * hkm * hkm * hkm;
+    ro = get_ro(hkm);
     Xaer = cx * ro * y[1] * y[1] * S / 2.0;
     /*
     double a = -0.8 * ro * S / 1.0 / y[2];
@@ -598,6 +607,57 @@ Matrix cx_distribution()
     return results_with_random;
 }
 
+Matrix all_distribution()
+{
+    vector<double> args = {P1, P3, T};
+
+    double h_variance = H * 0.0075;
+    std::random_device h_rd{};
+    std::mt19937 h_gen{h_rd()};
+    std::normal_distribution<> dh{H, h_variance};
+
+    double v_variance = V * 0.0075;
+    std::random_device v_rd{};
+    std::mt19937 v_gen{v_rd()};
+    std::normal_distribution<> dv{V, v_variance};
+
+    double cx_variance = cx * 0.0075;
+    std::random_device cx_rd{};
+    std::mt19937 cx_gen{cx_rd()};
+    std::normal_distribution<> dcx{cx, cx_variance};
+
+    double m_variance = am * 0.0075;
+    std::random_device m_rd{};
+    std::mt19937 m_gen{m_rd()};
+    std::normal_distribution<> dm{am, m_variance};
+
+    double u_variance = u_max * 0.0075;
+    std::random_device u_rd{};
+    std::mt19937 u_gen{u_rd()};
+    std::normal_distribution<> du{u_max, u_variance};
+
+    Matrix results_with_random(0, vector<double>(12, 0));
+    for (std::size_t i = 0; i < 10000; i++)
+    {
+        Matrix result(0, vector<double>(12, 0));
+
+        cx = dcx(cx_gen);
+        double local_am = dm(m_gen);
+        double local_v = dv(v_gen);
+        double local_h = dh(h_gen);
+        u_max = du(u_gen);
+
+        vector<double> init_y = {local_h, local_v, local_am};
+        execRK(args, init_y, result);
+
+        if (result.back()[2] < 0)
+            continue;
+        results_with_random.push_back(result.back());
+        results_with_random.back().back() = cx;
+    }
+    return results_with_random;
+}
+
 void synthesis()
 {
     std::cout << "synthesis()" << std::endl;
@@ -617,7 +677,8 @@ void synthesis()
     //const auto results_to_print = h_distribution();
     //const auto results_to_print = v_distribution();
     //const auto results_to_print = m_distribution();
-    const auto results_to_print = cx_distribution();
+    //const auto results_to_print = cx_distribution();
+    const auto results_to_print = all_distribution();
     printMatrix(results_to_print);
     //printMatrix(OPTIMAL);
     std::cout << "/synthesis()" << std::endl;
